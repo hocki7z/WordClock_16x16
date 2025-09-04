@@ -44,6 +44,11 @@ void Display::Init(void)
     FastLED.clear();
 }
 
+void Display::SetTime(const uint8_t aHour, const uint8_t aMinute, const uint8_t aSecond)
+{
+
+}
+
 void Display::Update(void)
 {
     /* Get current system tick */
@@ -170,4 +175,36 @@ void Display::PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t
             PaintLine((aRow + wI), aCol, aWidth, aColor);
         }
     }
+}
+
+void Display::PaintWord(const tWord aWord, const CRGB aColor)
+{
+    /* Check input parameters */
+    if ((aWord > WORD_END_OF_WORDS) &&
+        (aWord < WORD_MAX_NUMBER))
+    {
+        /* Get word data */
+        tWordData wWordData = mcWordDataArray[aWord];
+
+        /* Paint word as a line */
+        PaintLine(wWordData.mRow, wWordData.mColumn, wWordData.mLength, aColor);
+    }
+}
+
+void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const uint8_t aSecond)
+{
+    tWord wWords[WORD_MAX_NUMBER];
+
+    uint8_t wHour   = aHour;
+    uint8_t wMinute = aMinute;
+    bool    wIsPM   = false;
+
+    /* We have only 12 hours */
+    if (wHour >= 12)
+    {
+        wHour -= /* HOUR_COUNT */ 12;
+        wIsPM = true;
+    }
+
+    //tbl_minute  = &tbl_minutes[minute_mode][wMinute / 5];
 }
