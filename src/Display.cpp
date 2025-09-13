@@ -45,8 +45,12 @@ void Display::Init(void)
     FastLED.setCorrection(TypicalLEDStrip);
     // Set default LED brightness
     FastLED.setBrightness(LED_DEFAULT_BRIGHTNESS);
-    // Switch OFF all LEDs
+    // Clear FastLED
     FastLED.clear();
+
+    /* Switch OFF all LEDs */
+    Clear();
+    FastLED.show();
 }
 
 void Display::Loop(void)
