@@ -1,7 +1,11 @@
 #include <Arduino.h>
 
+#include "Logger.h"
 #include "Display.h"
 #include "TimeManager.h"
+
+/* Log level for this module */
+#define LOG_LEVEL   (LOG_DEBUG)
 
 
 static Display* mpDisplay;
@@ -25,7 +29,7 @@ void setup()
     pmTimeManager->RegisterMinuteEventCallback(mpDisplay);
 
     /* LOG */
-    Serial.printf("Welcome to WordClock");
+    LOG(LOG_INFO, "Welcome to WordClock");
 }
 
 void loop()
