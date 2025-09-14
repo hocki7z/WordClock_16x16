@@ -221,7 +221,7 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         uint8_t wMinuteExtra  = aMinute % 5;    // extra minutes 0, +1 ... +4
 
         /* Get minute display data */
-        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[WORDCLOCK_MODE_0][wMinute];
+        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[WORDCLOCK_MODE_1][wMinute];
 
         /* Correct hour offset */
         if ((wMinuteDisplay.mFlags & HOUR_OFFSET_1) == HOUR_OFFSET_1)
@@ -233,6 +233,12 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         while (wHour > HOURS_COUNT)
         {
             wHour -= HOURS_COUNT;
+        }
+
+        /* Correct index for 12 Hours */
+        if (wHour == 12)
+        {
+            wHour = 0;
         }
 
         /* Paint 'Es ist' */
