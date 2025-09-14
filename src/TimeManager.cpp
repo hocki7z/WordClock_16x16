@@ -6,8 +6,18 @@
  */
 
 #include <TimeLib64.h>
+#include <ESPNtpClient.h>
+
+#include "Logger.h"
 
 #include "TimeManager.h"
+
+
+/* Log level for this module */
+#define LOG_LEVEL   (LOG_DEBUG)
+
+const PROGMEM char* ntpServer = "pool.ntp.org";
+
 
 /**
  * @brief Constructor
@@ -34,6 +44,22 @@ void TimeManager::Init(void)
 
     /* Init time variables */
     mPrevTime = GetDateTime();
+
+    setenv("TZ", TZ_Europe_Berlin, 1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
+    tzset();
+
+    /* Register NTP sync events callback */
+	NTP.onNTPSyncEvent(
+        std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
+
+    NTP.setTimeZone(TZ_Europe_Berlin);
+
+    NTP.setInterval(600);
+    NTP.setNTPTimeout(/*NTP_TIMEOUT*/5000);
+    // NTP.setMinSyncAccuracy(5000);
+    // NTP.settimeSyncThreshold(3000);
+
+    NTP.begin(ntpServer, false);
 }
 
 void TimeManager::Loop(void)
@@ -68,6 +94,36 @@ void TimeManager::RegisterMinuteEventCallback(NotifyTimeCallback* apCallback)
     }
 }
 
+DateTimeNS::tDateTime TimeManager::ConvertTime(time_t aTime)
+{
+    DateTimeNS::tDateTime wDateTime;
+
+    /* Parse given time */
+    tmElements_t tm;
+    breakTime(aTime, tm);
+
+    /*Fill time struct with the values */
+    wDateTime.mTime.mSecond 	= tm.Second;
+    wDateTime.mTime.mMinute 	= tm.Minute;
+    wDateTime.mTime.mHour   	= tm.Hour;
+    //
+    wDateTime.mDate.mDay 	  	= tm.Day;
+    wDateTime.mDate.mWeekDay 	= tm.Wday;
+    wDateTime.mDate.mMonth  	= tm.Month;
+
+    /* Convert tm.Year (offset from 1970) to the calendar year */
+    wDateTime.mDate.mYear   	= tmYearToCalendar(tm.Year);
+
+    return wDateTime;
+}
+
+void TimeManager::SetDateTime(time_t aTime)
+{
+    DateTimeNS::tDateTime wDateTime = ConvertTime(aTime);
+
+    /* Set new local time */
+    SetDateTime(wDateTime);
+}
 
 /**
  * @brief Set current time
@@ -84,24 +140,10 @@ void TimeManager::SetDateTime(DateTimeNS::tDateTime aDateTime)
  */
 DateTimeNS::tDateTime TimeManager::GetDateTime(void)
 {
-    DateTimeNS::tDateTime wDateTime;
-
-	tmElements_t wTmElems;
-
-	/* Parse current time */
-	breakTime(now(), wTmElems);
-
-	/* Fill time struct with the values */
-	wDateTime.mTime.mSecond 	= wTmElems.Second;
-	wDateTime.mTime.mMinute 	= wTmElems.Minute;
-	wDateTime.mTime.mHour   	= wTmElems.Hour;
-	//
-	wDateTime.mDate.mDay 	  	= wTmElems.Day;
-	wDateTime.mDate.mWeekDay 	= wTmElems.Wday;
-	wDateTime.mDate.mMonth  	= wTmElems.Month;
-
-	/* Convert tm.Year (offset from 1970) to the calendar year */
-	wDateTime.mDate.mYear   	= tmYearToCalendar(wTmElems.Year);
+    /* Get current time */
+    time_t wCurrTime = now();
+    /* and convert it */
+    DateTimeNS::tDateTime wDateTime = ConvertTime(wCurrTime);
 
 	return wDateTime;
 }
@@ -128,4 +170,30 @@ DateTimeNS::tDateTime TimeManager::GetCompileTime(void)
     wDateTime.mTime.mSecond = atoi(__TIME__ + 6);
 
     return wDateTime;
+}
+
+void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
+{
+    /* Process event */
+    switch (aEvent.event)
+    {
+        case timeSyncd:
+        {
+            /* Get NTP time */
+            time_t wNtpTime = NTP.getLastNTPSync();
+
+            /* Time successfully got from NTP server */
+            LOG(LOG_DEBUG, "TimeManager::HandleNTPSyncEvent() Sync NTP time successfully");
+//            LOG(LOG_DEBUG, "[TimeMgr] sync successfully: NTP time %s, %s",
+//                    NTP.getTimeDateString(wNtpTime).c_str(),
+//                    (NTP.isSummerTime() ? "summer time" : "winter time"));
+
+            /* Update local time */
+            SetDateTime(wNtpTime);
+        }
+            break;
+
+        default:
+            break;
+    }
 }
