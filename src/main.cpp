@@ -31,16 +31,24 @@ public:
     void task() override
     {
         TaskStats stats;
+        uint32_t  wCount = 0;
+
+        /* LOG */
+        Serial.printf("TestTask: Run\n");
 
         for (;;)
         {
             vTaskDelay(pdMS_TO_TICKS(1000));
 
+            Serial.printf("TestTask: count %d\n", wCount);
+
+            wCount++;
+
             /* Get stats */
 //            vTaskGetInfo(NULL, (TaskStatus_t *)&stats, pdTRUE, eInvalid);
 
             /* LOG */
-            Serial.printf("TestTask: Run\n");
+//            Serial.printf("TestTask: Run\n");
 //            Serial.printf("Task: %s, State: %d, Prio: %d, Stack: %d\n",
 //                          stats.taskName,
 //                          stats.taskState,
