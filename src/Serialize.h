@@ -105,7 +105,7 @@ namespace SerializeNS
      *
      * @return aOffset + 2, can be used as offset for next call
      */
-    inline uint32_t UnserializeData(const uint8_t* const apByteArray, uint8_t* const apData, uint32_t aOffset = 0)
+    inline uint32_t DeserializeData(const uint8_t* const apByteArray, uint8_t* const apData, uint32_t aOffset = 0)
     {
         /* Retrieve data from byte array as little endian */
         *apData = (apByteArray[aOffset++] <<  0);
@@ -122,7 +122,7 @@ namespace SerializeNS
      *
      * @return aOffset + 2, can be used as offset for next call
      */
-    inline uint32_t UnserializeData(const uint8_t* const apByteArray, uint16_t* const apData, uint32_t aOffset = 0)
+    inline uint32_t DeserializeData(const uint8_t* const apByteArray, uint16_t* const apData, uint32_t aOffset = 0)
     {
         /* Retrieve data from byte array as little endian */
         *apData = (apByteArray[aOffset++] <<  0) |
@@ -140,7 +140,7 @@ namespace SerializeNS
      *
      * @return aOffset + 4, can be used as offset for next call
      */
-    inline uint32_t UnserializeData(const uint8_t* const apByteArray, uint32_t* const apData, uint32_t aOffset = 0)
+    inline uint32_t DeserializeData(const uint8_t* const apByteArray, uint32_t* const apData, uint32_t aOffset = 0)
     {
         /* Retrieve data from byte array as little endian */
         *apData = (apByteArray[aOffset++] <<  0) |
@@ -151,7 +151,16 @@ namespace SerializeNS
         return aOffset;
     }
 
-    inline uint32_t UnserializeData(const uint8_t* const apByteArray, float* const apData, uint32_t aOffset = 0)
+    /**
+     * @brief Retrieve 4-byte float from a serialized byte array
+     *
+     * @param[in]  apByteArray : Byte array from which the data should be read
+     * @param[out] apData      : Pointer to the data retrieved from the byte array
+     * @param[in]  aOffset     : Index within the byte array at which the data is located
+     *
+     * @return aOffset + 4, can be used as offset for next call
+     */
+    inline uint32_t DeserializeData(const uint8_t* const apByteArray, float* const apData, uint32_t aOffset = 0)
     {
         /* Use union in order to split float into 4 bytes */
         union

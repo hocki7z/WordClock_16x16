@@ -58,6 +58,9 @@ static ApplicationNS::tTaskObjects      mWifiManagerTaskObjects;
     PUBLIC MEMBER VARIABLES
  *****************************************************************************/
 
+/* Instance of Settings class */
+SettingsNS::Settings Settings;
+
 
 /******************************************************************************
     PUBLIC FUNCTION CODE
