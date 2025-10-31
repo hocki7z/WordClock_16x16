@@ -77,9 +77,13 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	NTP.onNTPSyncEvent(
         std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
 
+    /* Get NTP server from settings */
+    mNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
+
     /* Set time zone from settings */
-    uint8_t wTimeZoneIndex = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
-    NTP.setTimeZone(ConfigNS::mcTimezones[wTimeZoneIndex]);
+    mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+    NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
+
    /* Set sync parameters */
     NTP.setInterval(NTP_SYNC_PERIOD);
     NTP.setNTPTimeout(NTP_TIMEOUT);
@@ -98,22 +102,15 @@ void TimeManager::task(void)
 
 void TimeManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
-    /* Check NTP time sync */
-    if (mNtpTimeSynced)
+    if (aTimerId == mPeriodicalTaskTimerId)
     {
-        /* Get current time */
-        DateTimeNS::tDateTime wCurrTime = GetLocalTime();
-
-        /* Check if a minute event should be fired */
-        if ((mSentTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
-            (mSentTime.mTime.mMinute != wCurrTime.mTime.mMinute))
-        {
-            /* Send changed time */
-            SendTime();
-
-            /* Update previous time after notification sent */
-            mSentTime = wCurrTime;
-        }
+        /* Send changed time */
+        SendTime();
+    }
+    else
+    {
+        /* Unknown timer ID */
+        LOG(LOG_ERROR, "TimeManager::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
     }
 }
 
@@ -123,26 +120,6 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
     switch (arMessage.mId)
     {
-        case MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME:
-        {
-            /* Deserialize last sync time */
-            uint32_t wDword;
-            if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
-            {
-                DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wDword);
-
-                LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() NTP last sync time: " PRINTF_DATETIME_PATTERN,
-                        PRINTF_DATETIME_FORMAT(wDateTime));
-
-                /* Set local time to last sync time */
-                SetLocalTime(wDateTime);
-
-                /* Set NTP sync flag */
-                mNtpTimeSynced = true;
-            }
-        }
-            break;
-
         case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
         {
             /* WiFi connected, start NTP sync */
@@ -154,32 +131,64 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         }
             break;
 
+        case MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME:
+            /* Set sync flag */
+            mNtpTimeSynced = true;
+
+            /* Set local time from the last NTP sync time */
+            SetLocalTimeFromNTP();
+            break;
+
         case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
         {
             // Settings changed, re-read settings if needed
             LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() Settings changed");
 
-            /* Set time zone from settings */
-            uint8_t wTimeZoneIndex = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
-            NTP.setTimeZone(ConfigNS::mcTimezones[wTimeZoneIndex]);
+            /* Get NTP server and time zone from settings */
+            uint8_t wNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
+            uint8_t wTimeZone  = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
-            /* Update local time */
-            DateTimeNS::tDateTime wNTPTime = GetNtpTime();
-            SetLocalTime(wNTPTime);
+            /* Update NTP server if changed */
+            if (wNtpServer != mNtpServer)
+            {
+                mTimeZone = wTimeZone;
+                mNtpServer = wNtpServer;
 
-            /* Get current time */
-            DateTimeNS::tDateTime wCurrTime = GetLocalTime();
-            /* Send time */
-            SendTime();
+                NTP.setNtpServerName(ConfigNS::mcNtpServerItems[mNtpServer]);
 
-            /* Update previous time after notification sent */
-            mSentTime = wCurrTime;
+                //NTP.stop();
+                //NTP.begin(ConfigNS::mcNtpServerItems[mNtpServer], false);
+            }
+            else if (wTimeZone != mTimeZone)
+            {
+                mTimeZone = wTimeZone;
+
+                NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
+
+                if (mNtpTimeSynced)
+                {
+                    /* Update local time */
+                    SetLocalTimeFromNTP();
+
+                    /* Send time */
+                    SendTime();
+                }
+            }
         }
             break;
 
         default:
             // do nothing
             break;
+    }
+}
+
+void TimeManager::SetLocalTimeFromNTP(void)
+{
+    if (mNtpTimeSynced)
+    {
+        DateTimeNS::tDateTime wNTPTime = GetNtpTime();
+        SetLocalTime(wNTPTime);
     }
 }
 
@@ -271,30 +280,45 @@ DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
 
 void TimeManager::SendTime(void)
 {
-    DateTimeNS::tDateTime wDateTime = GetLocalTime();
-
-    LOG(LOG_VERBOSE, "TimeManager::SendTime() Time to send: " PRINTF_DATETIME_PATTERN,
-            PRINTF_DATETIME_FORMAT(wDateTime));
-
-    /* Create message */
-    MessageNS::Message wMessage;
-    wMessage.mSource = MessageNS::tAddress::TIME_MANAGER;
-    wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
-
-    wMessage.mId = MessageNS::tMessageId::MGS_EVENT_DATETIME_CHANGED;
-
-    /* Serialize DateTime in message payload */
-    uint32_t wDword = DateTimeNS::DateTimeToDword(wDateTime);
-    if (SerializeNS::SerializeData(wDword, wMessage.mPayload) == sizeof(wDword))
+    /* Check NTP time sync */
+    if (mNtpTimeSynced)
     {
-        /* Set payload length */
-        wMessage.mPayloadLength = sizeof(wDword);
-        /* Send message */
-        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
-    }
-    else
-    {
-        //TODO handle serialization error
+        /* Get current time */
+        DateTimeNS::tDateTime wCurrTime = GetLocalTime();
+
+        /* Check if a minute event should be fired */
+        if ((mSentTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
+            (mSentTime.mTime.mMinute != wCurrTime.mTime.mMinute))
+        {
+            /* Send changed time */
+            LOG(LOG_VERBOSE, "TimeManager::SendTime() Time to send: " PRINTF_DATETIME_PATTERN,
+                    PRINTF_DATETIME_FORMAT(wCurrTime));
+
+            /* Create message */
+            MessageNS::Message wMessage;
+            wMessage.mSource = MessageNS::tAddress::TIME_MANAGER;
+            wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+
+            wMessage.mId = MessageNS::tMessageId::MGS_EVENT_DATETIME_CHANGED;
+
+            /* Serialize DateTime in message payload */
+            uint32_t wDword = DateTimeNS::DateTimeToDword(wCurrTime);
+            if (SerializeNS::SerializeData(wDword, wMessage.mPayload) == sizeof(wDword))
+            {
+                /* Set payload length */
+                wMessage.mPayloadLength = sizeof(wDword);
+                /* Send message */
+                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+            }
+            else
+            {
+                //TODO handle serialization error
+            }
+
+
+            /* Update previous time*/
+            mSentTime = wCurrTime;
+        }
     }
 }
 
